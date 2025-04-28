@@ -48,6 +48,52 @@ double histogramBenchmarkOnCPU(
   return elapsed_time_msec;
 }
 
+double histogramBenchmarkOnGPU(
+    const int num_trials,
+    const int* h_assignments,
+    const uint num_elements,
+    const uint num_bins,
+    uint* h_histogram,
+    bool print_log = false
+) {
+  chrono::system_clock::time_point start, end;
+  double elapsed_time_msec;
+
+  uint* d_assignemnts;  // input
+  uint* d_histogram;    // output
+
+  // Transfer data to the device memory
+  checkCudaErrors(cudaMalloc(&d_assignments, num_elements*sizeof(int)));
+  checkCudaErrors(cudaMalloc(&d_histogram, num_bins*sizeof(uint)));
+  
+  checkCudaErrors(cudaMemcpy(
+          d_assignments,
+          h_assignments,
+          num_elements*sizeof(int),
+          cudaMemcpyDefault)
+  );
+  checkCudaErrors(cudaMemcpy(
+          d_histogram,
+          h_histogram,
+          num_elements*sizeof(uint),
+          cudaMemcpyDefault)
+  );
+
+  // compute
+  start = chrono::system_clock::now();
+  for (int trial_id = 0; trial_id < num_trial; ++trial_id) {
+    // virtual one-dimentional CUDA kernel launching
+    const int num_threads = 1024;
+    const int num_blocks = (num_elements + num_threads - 1) / num_threads;   
+    histogram_kernel_v1<<<num_blocks, num_threads>>>(
+        d_assignments,
+        num_elements,
+        d_histogram,
+        num_bins
+    );
+  }
+}
+
 int main(int argc, char* argv[]) {
   const uint max_func_id = 4;  // 要らないかも
   const uint num_bins = 256;
