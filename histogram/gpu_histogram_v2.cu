@@ -19,7 +19,7 @@ __global__ void histogram_kernel_v2(
 
   cg::sync(cta);
 
-  if (thread_id < num_elements) {
+  if (global_id < num_elements) {
     int bin_idx = h_assignments[global_id];
     // 以下は `h_histogram[bin_idx]++` の並列版
     atomicAdd(shared_histogram + bin_idx, 1);
