@@ -1,3 +1,19 @@
+# ベンチマーク結果
+10倍程度高速になる
+```
+$ ./main  # CPU
+#elements: 268435456
+#bins: 256
+Time (10 iterations) on version 0: 4837.48 msec
+```
+
+```
+$ ./main
+#elements: 268435456
+#bins: 256
+Time (10 iterations) on version 1: 561.496 msec
+```
+
 # 参考
 
 ## 公式サンプルの出力

@@ -1,6 +1,6 @@
 TARGET = main
 
-SRC = main.cpp 
+SRC = main.cu gpu_histogram_v1.cu gpu_histogram_v2.cu
 
 NVCC = nvcc
 
