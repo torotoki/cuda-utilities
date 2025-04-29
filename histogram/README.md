@@ -1,5 +1,7 @@
 # ベンチマーク結果
 10倍程度高速になる
+
+### CPU
 ```
 $ ./main  # CPU
 #elements: 268435456
@@ -7,11 +9,20 @@ $ ./main  # CPU
 Time (10 iterations) on version 0: 4837.48 msec
 ```
 
+### global memory に atomicAdd する
 ```
 $ ./main
 #elements: 268435456
 #bins: 256
 Time (10 iterations) on version 1: 561.496 msec
+```
+
+### shared memory に atomic Addして足し上げる
+```
+$ ./main
+#elements: 268435456
+#bins: 256
+Time (10 iterations) on version 2: 44.4208 msec
 ```
 
 # 参考

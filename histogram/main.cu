@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
   std::mt19937 random_generator(42);
   std::uniform_int_distribution<> dist(0, num_bins - 1);
 
-  const int kernel_version = 1;
+  const int kernel_version = 2;
   
   cout << "#elements: " << num_elements << endl;
   cout << "#bins: " << num_bins << endl;
