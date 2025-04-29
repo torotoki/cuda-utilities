@@ -17,7 +17,7 @@ $ ./main
 Time (10 iterations) on version 1: 561.496 msec
 ```
 
-### shared memory に atomic Addして足し上げる
+### shared memory に atomicAdd したあと、global memory に足し上げる
 ```
 $ ./main
 #elements: 268435456
