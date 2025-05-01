@@ -134,6 +134,9 @@ double histogramBenchmarkOnGPU(
         num_bins * sizeof(uint),
         cudaMemcpyDefault)
   );
+  checkCudaErrors(cudaFree(d_histogram));
+  checkCudaErrors(cudaFree(d_assignments));
+
   elapsed_time_msec = chrono::duration<double, std::milli>(end - start).count();
   
   return elapsed_time_msec;
