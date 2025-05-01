@@ -4,9 +4,9 @@
 namespace cg = cooperative_groups;
 
 __global__ void histogram_kernel_v2(
-    const uint* h_assignments,
+    const uint* d_assignments,
     const uint num_elements,
-    uint* h_histogram,
+    uint* d_histogram,
     const uint num_bins
 ) {
   cg::thread_block cta = cg::this_thread_block();
@@ -20,7 +20,7 @@ __global__ void histogram_kernel_v2(
   cg::sync(cta);
 
   if (global_id < num_elements) {
-    int bin_idx = h_assignments[global_id];
+    int bin_idx = d_assignments[global_id];
     // 以下は `h_histogram[bin_idx]++` の並列版
     atomicAdd(shared_histogram + bin_idx, 1);
   }
@@ -29,6 +29,6 @@ __global__ void histogram_kernel_v2(
 
   if (thread_id < num_bins) {
     uint sub_sum = shared_histogram[thread_id];
-    atomicAdd(h_histogram + thread_id, sub_sum);
+    atomicAdd(d_histogram + thread_id, sub_sum);
   }
 }

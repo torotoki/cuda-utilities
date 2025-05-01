@@ -97,6 +97,9 @@ double histogramBenchmarkOnGPU(
     // virtual one-dimentional CUDA kernel launching
     const int num_threads = 1024;
     const int num_blocks = (num_elements + num_threads - 1) / num_threads;   
+
+    // for kernel v2
+    const int shared_mem_size = num_bins * sizeof(uint);
   
     checkCudaErrors(cudaMemcpy(
             d_histogram,
@@ -115,7 +118,8 @@ double histogramBenchmarkOnGPU(
         );
         break;
       case 2:
-        histogram_kernel_v2<<<num_blocks, num_threads>>>(
+        // Use shared memory for bins
+        histogram_kernel_v2<<<num_blocks, num_threads, shared_mem_size>>>(
             d_assignments,
             num_elements,
             d_histogram,
