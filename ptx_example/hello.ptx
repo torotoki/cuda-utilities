@@ -1,0 +1,7 @@
+.version 7.0
+.target sm_50
+.address_size 64
+
+.visible .entry hello_ptx_kernel() {
+  ret;
+}
