@@ -60,50 +60,56 @@ void launch_kernel_scan_v1(
 //   * 定数を足すカーネルを作る
 /////////////////////////////////////////
 __global__ void scan_gpu_kernel_v2_first_phase(
-  int num_elements,
-  const uint* values,
-  uint* prefix_sum,
-  uint* sections
+    int num_elements,
+    const uint* values,
+    uint* prefix_sum,
+    const size_t sections_size,
+    uint* sections
 ) {
   cg::thread_block cta = cg::this_thread_block();
-  int thread_idx = threadIdx.x;
   int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  __shared__ int local_prefix_sum[SECTION_LIMITATION];
+  __shared__ uint local_prefix_sum[SECTION_LIMITATION];
 
-  if (thread_idx < num_elements)
-    local_prefix_sum[thread_idx] = values[thread_idx];
+  if (threadIdx.x < num_elements)
+    local_prefix_sum[threadIdx.x] = values[threadIdx.x];
   else
-    local_prefix_sum[thread_idx] = 0;
+    local_prefix_sum[threadIdx.x] = 0;
 
-  for (int stride = 1; stride < blockDim.x; stride *= 2) {
-    cg::sync(cta);
-    float temp;
-    if (thread_idx >= stride)
-      temp = local_prefix_sum[thread_idx] + local_prefix_sum[thread_idx - stride];
-    cg::sync(cta);
-    if (thread_idx >= stride)
-      local_prefix_sum[thread_idx] = temp;
+  for (uint stride = 1; stride < blockDim.x; stride *= 2) {
+    cta.sync();
+    uint temp;
+    if (threadIdx.x >= stride)
+      temp = local_prefix_sum[threadIdx.x] + local_prefix_sum[threadIdx.x - stride];
+    cta.sync();
+    if (threadIdx.x >= stride)
+      local_prefix_sum[threadIdx.x] = temp;
   }
-  if (thread_idx < num_elements)
-    prefix_sum[global_idx] = local_prefix_sum[thread_idx];
+  if (global_idx < num_elements)
+    prefix_sum[global_idx] = local_prefix_sum[threadIdx.x];
 
   cg::sync(cta);
-  if (thread_idx == blockDim.x - 1) {
-    sections[blockIdx.x] = prefix_sum[thread_idx];
+  if (threadIdx.x == blockDim.x - 1) {
+    sections[blockIdx.x] = local_prefix_sum[threadIdx.x];
   } 
 }
 
 __global__ void scan_gpu_kernel_v2_second_phase(
-  const int num_sections,
-  uint* sections
+    const int num_sections,
+    uint* sections
 ) {
   cg::thread_block cta = cg::this_thread_block();
+
+  if (threadIdx.x >= num_sections)
+    sections[threadIdx.x] = 0;
   
-  for (uint stride = 1; stride <= num_sections; stride *= 2) {
+  for (uint stride = 1; stride <= blockDim.x; stride *= 2) {
     cta.sync();
-    uint temp = sections[threadIdx.x] + sections[threadIdx.x - stride];
+    uint temp;
+    if (threadIdx.x >= stride)
+      temp = sections[threadIdx.x] + sections[threadIdx.x - stride];
     cta.sync();
-    sections[threadIdx.x] = temp;
+    if (threadIdx.x >= stride)
+      sections[threadIdx.x] = temp;
   }
 }
 
@@ -113,7 +119,8 @@ __global__ void scan_gpu_kernel_v2_third_phase(
   uint* prefix_sum
 ) {
   int global_idx = blockDim.x * blockIdx.x + threadIdx.x;
-  prefix_sum[global_idx] += sections[blockIdx.x];
+  if (0 < blockIdx.x && global_idx < num_elements)
+    prefix_sum[global_idx] += sections[blockIdx.x - 1];
 }
 
 
@@ -127,32 +134,36 @@ void launch_kernel_scan_v2(
   uint* d_sections;
   size_t sections_size = num_blocks * sizeof(uint);
   checkCudaErrors(cudaMalloc(&d_sections, sections_size));
-  uint* d_sections_compressed;
-  uint num_sections_compressed = 
-    (num_blocks + SECTION_LIMITATION - 1) / SECTION_LIMITATION;
-  size_t sections_compressed_size = 
-    num_sections_compressed * sizeof(uint);
-  checkCudaErrors(cudaMalloc(&d_sections_compressed, sections_compressed_size));
+  // uint* d_sections2;
+  // checkCudaErrors(cudaMalloc(&d_sections2, sections_size));
+  // uint* d_sections_compressed;
+  // uint num_sections_compressed = 
+  //   (num_blocks + SECTION_LIMITATION - 1) / SECTION_LIMITATION;
+  // size_t sections_compressed_size = 
+  //   num_sections_compressed * sizeof(uint);
+  // checkCudaErrors(cudaMalloc(&d_sections_compressed, sections_compressed_size));
 
   // First CUDA kernel: scan on each block
-  scan_gpu_kernel_v2_first_phase<<<num_blocks, num_threads, sections_size>>>(
+  scan_gpu_kernel_v2_first_phase
+    <<<num_blocks, num_threads, SECTION_LIMITATION * sizeof(uint)>>>(
       num_elements,
       d_values,
-      d_sections,
-      d_prefix_sum
+      d_prefix_sum,
+      sections_size,
+      d_sections
   );
   
   // Second CUDA kernel: scan on block-wise sections
-  std::cout << num_blocks << std::endl;
-  assert(SECTION_LIMITATION <= num_blocks);
-  assert(num_blocks <= SECTION_LIMITATION * SECTION_LIMITATION);
-  scan_gpu_kernel_v2_first_second_phase
-    <<<num_sections_compressed, num_blocks, sections_compressed_size>>>
-  (
-      num_blocks,
-      d_sections,
-      d_sections_compressed
-  );
+  assert(num_blocks <= SECTION_LIMITATION);
+  // scan_gpu_kernel_v2_first_phase
+  //   <<<num_sections_compressed, num_blocks, sections_compressed_size>>>
+  // (
+  //     num_blocks,
+  //     d_sections,
+  //     d_sections_compressed,
+  //     d_sections2
+  // );
+
   scan_gpu_kernel_v2_second_phase<<<1, num_blocks>>>(
       num_blocks,
       d_sections

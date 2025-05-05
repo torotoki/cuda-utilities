@@ -17,7 +17,7 @@ double benchmarkOnGPU(
     uint* d_values,
     uint* h_prefix_sum,
     uint* d_prefix_sum,
-    const int kernel_version = 1,
+    const int kernel_version,
     const int num_trials = 10
 ) {
   assert(num_elements % 1024 == 0 && num_elements >= 1024);
@@ -102,8 +102,8 @@ int main() {
   std::mt19937 gen(42);
   std::uniform_int_distribution<> dist(0, 32767);
 
-  // 13 * 2^19 * 4 MB
-  const uint num_elements = 13 * (1<<19);
+  // 1 * 2^20 * 4 MB
+  const uint num_elements = 1 * (1<<20);
   vector<uint> h_values(num_elements);
   vector<uint> h_expected_prefix_sum(num_elements);
   vector<uint> h_actual_prefix_sum(num_elements);
@@ -114,8 +114,9 @@ int main() {
   cout << "kernel version: " << kernel_version << endl;
 
   for (uint i = 0; i < num_elements; ++i) {
+    // NOTE: easily overflows
     // h_values[i] = dist(gen);
-    h_values[i] = 1;
+    h_values[i] = 2;
   }
 
   benchmarkOnCPU(
@@ -148,6 +149,9 @@ int main() {
       throw std::invalid_argument("Invalid kernel version.");
   }
 
+  cout << "10th elem: " << h_actual_prefix_sum[9] << endl;
+  cout << "(expected): "
+    << h_expected_prefix_sum[9] << endl;
   cout << "Last element: " << h_actual_prefix_sum[num_elements - 1] << endl;
   cout << "Last element (expected): "
     << h_expected_prefix_sum[num_elements - 1] << endl;
