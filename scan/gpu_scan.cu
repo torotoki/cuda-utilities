@@ -1,7 +1,7 @@
 #include <cassert>
 #include <iostream>
 #include <cooperative_groups.h>
-#include "../cuda_utility.hpp"
+#include "../common/cuda_utility.hpp"
 
 namespace cg = cooperative_groups;
 using uint = unsigned int;

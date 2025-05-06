@@ -5,7 +5,7 @@
 #include <chrono>
 
 #include <cuda_runtime.h>
-#include "../cuda_utility.hpp"
+#include "../common/cuda_utility.hpp"
 #include "gpu_scan.cuh"
 
 using uint = unsigned int;

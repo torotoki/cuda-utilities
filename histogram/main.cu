@@ -8,7 +8,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#include "../cuda_utility.hpp"
+#include "../common/cuda_utility.hpp"
 //#include "cpu_histogram.hpp"
 #include "gpu_histogram.cuh"
 

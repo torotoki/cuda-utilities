@@ -8,7 +8,7 @@
 
 #include "reduction.hpp"
 #include "gpu_reduction.cuh"
-#include "cuda_utility.hpp"
+#include "common/cuda_utility.hpp"
 
 using namespace std;
 
