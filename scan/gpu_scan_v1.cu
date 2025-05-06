@@ -54,16 +54,19 @@ void launch_kernel_scan_v1(
 /////////////////////////////////////////
 // Inclusive Scan with Kogge-Stone algorithm with shared memory
 // block内で計算して、後で結果をまとめ上げる
-// TODO:
+// 処理順:
 //   * block内だけで計算する-> Sという中間出力の配列に書く
 //   * まとめ上げる処理を書く（もう一度Sにscanを通す）
 //   * 定数を足すカーネルを作る
+// 計算量:
+//   * 入力長をnとする
+//   * それぞれのthreadでO(log n)回の演算を行う
+//   * n thread 必要なので、全体の計算量はO(n log n)になる
 /////////////////////////////////////////
 __global__ void scan_gpu_kernel_v2_first_phase(
     int num_elements,
     const uint* values,
     uint* prefix_sum,
-    const size_t sections_size,
     uint* sections
 ) {
   cg::thread_block cta = cg::this_thread_block();
@@ -149,7 +152,6 @@ void launch_kernel_scan_v2(
       num_elements,
       d_values,
       d_prefix_sum,
-      sections_size,
       d_sections
   );
   
@@ -175,4 +177,47 @@ void launch_kernel_scan_v2(
       d_sections,
       d_prefix_sum
   );
+}
+
+
+/////////////////////////////////////////
+// Inclusive Scan with Brent-Kung algorithm with shared memory
+// block内で計算して、後で結果をまとめ上げる
+// 処理順:
+//   * block内だけで計算する-> Sという中間出力の配列に書く
+//   * 残りの処理はKogge-Stone algorithmと同じ
+// メモ:
+//   * 本だとbranch divergenceを避けるために複雑になっている
+//   * SECTION_LIMITAION (= 1024)だが、1024threadsで2048要素計算ができる
+/////////////////////////////////////////
+__global__ void scan_gpu_kernel_v3_first_phase(
+    const int num_elements,
+    const uint* values,
+    uint* prefix_sum,
+    uint* sections
+) {
+  __shared__ uint local_prefix_sum[SECTION_LIMITATION * 2];
+  cg::thread_block cta = cg::this_thread_block();
+  // なぜ2をかける？
+  uint global_idx = 2 * blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (global_idx < num_elements)
+    local_prefix_sum[threadIdx.x] = values[global_idx];
+  
+  if (global_idx + blockDim.x < num_elements)
+    local_prefix_sum[threadIdx.x + blockDim.x]
+        = values[global_idx + blockDim.x];
+
+  for (uint stride = 1; stride <= blockDim.x; stride *= 2) {
+    cta.sync();
+    uint index = (threadIdx.x + 1) * 2 * stride - 1;
+    if (index < SECTION_LIMITATION)
+      local_prefix_sum[index] += local_prefix_sum[index - stride];
+  }
+
+  for (uint stride = SECTION_LIMITATION / 2; stride > 0; stride /= 2) {
+    cta.sync();
+    uint index = (threadIdx.x + 1) * 2 * stride - 1;
+    if (index + stride < SECTION_LIMITATION
+  }
 }
