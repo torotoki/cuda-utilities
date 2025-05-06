@@ -54,6 +54,28 @@ double benchmarkOnGPU(
           num_threads
       );
       break;
+    case 3:
+      num_blocks = num_elements / 1024;
+      num_threads = 1024;
+      launch_kernel_scan_v3(
+          num_elements,
+          d_values,
+          d_prefix_sum,
+          num_blocks,
+          num_threads
+      );
+      break;
+    case 4:
+      num_blocks = num_elements / 1024;
+      num_threads = 1024;
+      launch_kernel_scan_v4(
+          num_elements,
+          d_values,
+          d_prefix_sum,
+          num_blocks,
+          num_threads
+      );
+      break;
     default:
       throw std::invalid_argument("Invalid kernel version.");
   }
@@ -98,7 +120,7 @@ double benchmarkOnCPU(
 }
 
 int main() {
-  const int kernel_version = 2;
+  const int kernel_version = 4;
   std::mt19937 gen(42);
   std::uniform_int_distribution<> dist(0, 32767);
 
@@ -136,6 +158,8 @@ int main() {
       break;
     case 1:
     case 2:
+    case 3:
+    case 4:
       elapsed_time_msec = benchmarkOnGPU(
           num_elements,
           h_values.data(),

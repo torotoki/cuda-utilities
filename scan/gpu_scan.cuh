@@ -17,3 +17,19 @@ void launch_kernel_scan_v2(
     const int num_blocks,
     const int num_threads
 );
+
+void launch_kernel_scan_v3(
+    const int num_elements,
+    uint* d_values,
+    uint* d_prefix_sum,
+    const int num_blocks,
+    const int num_threads
+);
+
+void launch_kernel_scan_v4(
+    const int num_elements,
+    uint* d_values,
+    uint* d_prefix_sum,
+    const int num_blocks,
+    const int num_threads
+);

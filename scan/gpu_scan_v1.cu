@@ -185,10 +185,11 @@ void launch_kernel_scan_v2(
 // block内で計算して、後で結果をまとめ上げる
 // 処理順:
 //   * block内だけで計算する-> Sという中間出力の配列に書く
-//   * 残りの処理はKogge-Stone algorithmと同じ
+//   * 残りの処理はBrent-Kung algorithmと同じ
 // メモ:
 //   * 本だとbranch divergenceを避けるために複雑になっている
-//   * SECTION_LIMITAION (= 1024)だが、1024threadsで2048要素計算ができる
+//   * SECTION_LIMITAION (= 1024)だが、1024threadsで2048要素計算することもできる
+//     （ここではしていない）
 /////////////////////////////////////////
 __global__ void scan_gpu_kernel_v3_first_phase(
     const int num_elements,
@@ -196,28 +197,151 @@ __global__ void scan_gpu_kernel_v3_first_phase(
     uint* prefix_sum,
     uint* sections
 ) {
-  __shared__ uint local_prefix_sum[SECTION_LIMITATION * 2];
+  __shared__ int local_prefix_sum[SECTION_LIMITATION];
   cg::thread_block cta = cg::this_thread_block();
-  // なぜ2をかける？
-  uint global_idx = 2 * blockIdx.x * blockDim.x + threadIdx.x;
+  uint global_idx = blockDim.x * blockIdx.x + threadIdx.x;
 
   if (global_idx < num_elements)
     local_prefix_sum[threadIdx.x] = values[global_idx];
   
-  if (global_idx + blockDim.x < num_elements)
-    local_prefix_sum[threadIdx.x + blockDim.x]
-        = values[global_idx + blockDim.x];
-
   for (uint stride = 1; stride <= blockDim.x; stride *= 2) {
     cta.sync();
-    uint index = (threadIdx.x + 1) * 2 * stride - 1;
-    if (index < SECTION_LIMITATION)
-      local_prefix_sum[index] += local_prefix_sum[index - stride];
+    if ((threadIdx.x + 1) % (2 * stride) == 0)
+      local_prefix_sum[threadIdx.x] += local_prefix_sum[threadIdx.x - stride];
   }
 
-  for (uint stride = SECTION_LIMITATION / 2; stride > 0; stride /= 2) {
+  for (uint stride = SECTION_LIMITATION / 4; stride > 0; stride /= 2) {
     cta.sync();
-    uint index = (threadIdx.x + 1) * 2 * stride - 1;
-    if (index + stride < SECTION_LIMITATION
+    if ((threadIdx.x + 1) % (2 * stride) == 0)
+      local_prefix_sum[threadIdx.x + stride] += local_prefix_sum[threadIdx.x];
   }
+  cta.sync();
+
+  if (global_idx < num_elements)
+    prefix_sum[global_idx] = local_prefix_sum[threadIdx.x];
+
+  if (threadIdx.x == blockDim.x - 1)
+    sections[blockIdx.x] = local_prefix_sum[threadIdx.x];
 }
+
+void launch_kernel_scan_v3(
+	const int num_elements,
+  uint* d_values,
+  uint* d_prefix_sum,
+  int num_blocks,
+  int num_threads
+) {
+  uint* d_sections;
+  size_t sections_size = num_blocks * sizeof(uint);
+  checkCudaErrors(cudaMalloc(&d_sections, sections_size));
+
+  // First CUDA kernel: scan on each block
+  scan_gpu_kernel_v3_first_phase
+    <<<num_blocks, num_threads, SECTION_LIMITATION * sizeof(uint)>>>(
+      num_elements,
+      d_values,
+      d_prefix_sum,
+      d_sections
+  );
+  
+  // For the rest of the phases, we reuse v2 kernels
+
+  // Second CUDA kernel: scan on block-wise sections
+  assert(num_blocks <= SECTION_LIMITATION);
+  scan_gpu_kernel_v2_second_phase<<<1, num_blocks>>>(
+      num_blocks,
+      d_sections
+  );
+
+  // Third CUDA kernel: adding a section element as a base
+  scan_gpu_kernel_v2_third_phase<<<num_blocks, num_threads>>>(
+      num_elements,
+      d_sections,
+      d_prefix_sum
+  );
+}
+
+
+/////////////////////////////////////////
+// Inclusive Scan with Brent-Kung algorithm with shared memory
+// block内で計算して、後で結果をまとめ上げる
+// 処理順:
+//   * block内だけで計算する-> Sという中間出力の配列に書く
+//   * 残りの処理はKogge-Stone algorithmと同じ
+//   * branch divergence を減らしたバージョン
+// メモ:
+//   * SECTION_LIMITAION (= 1024)だが、1024threadsで2048要素計算することもできる
+//     （ここではしていない）
+/////////////////////////////////////////
+__global__ void scan_gpu_kernel_v4_first_phase(
+    const int num_elements,
+    const uint* values,
+    uint* prefix_sum,
+    uint* sections
+) {
+  __shared__ int local_prefix_sum[SECTION_LIMITATION];
+  cg::thread_block cta = cg::this_thread_block();
+  uint global_idx = blockDim.x * blockIdx.x + threadIdx.x;
+
+  if (global_idx < num_elements)
+    local_prefix_sum[threadIdx.x] = values[global_idx];
+  
+  for (uint stride = 1; stride <= blockDim.x; stride *= 2) {
+    cta.sync();
+    uint target_idx = (threadIdx.x + 1) * 2 * stride - 1;
+    if (target_idx < SECTION_LIMITATION)
+      local_prefix_sum[target_idx] += local_prefix_sum[target_idx - stride];
+  }
+
+  for (uint stride = SECTION_LIMITATION / 4; stride > 0; stride /= 2) {
+    cta.sync();
+    uint target_idx = (threadIdx.x + 1) * 2 * stride - 1;
+    if (target_idx < SECTION_LIMITATION)
+      local_prefix_sum[target_idx + stride] += local_prefix_sum[target_idx];
+  }
+  cta.sync();
+
+  if (global_idx < num_elements)
+    prefix_sum[global_idx] = local_prefix_sum[threadIdx.x];
+
+  if (threadIdx.x == blockDim.x - 1)
+    sections[blockIdx.x] = local_prefix_sum[threadIdx.x];
+}
+
+void launch_kernel_scan_v4(
+	const int num_elements,
+  uint* d_values,
+  uint* d_prefix_sum,
+  int num_blocks,
+  int num_threads
+) {
+  uint* d_sections;
+  size_t sections_size = num_blocks * sizeof(uint);
+  checkCudaErrors(cudaMalloc(&d_sections, sections_size));
+
+  // First CUDA kernel: scan on each block
+  scan_gpu_kernel_v4_first_phase
+    <<<num_blocks, num_threads, SECTION_LIMITATION * sizeof(uint)>>>(
+      num_elements,
+      d_values,
+      d_prefix_sum,
+      d_sections
+  );
+  
+  // For the rest of the phases, we reuse v2 kernels
+
+  // Second CUDA kernel: scan on block-wise sections
+  assert(num_blocks <= SECTION_LIMITATION);
+  scan_gpu_kernel_v2_second_phase<<<1, num_blocks>>>(
+      num_blocks,
+      d_sections
+  );
+
+  // Third CUDA kernel: adding a section element as a base
+  scan_gpu_kernel_v2_third_phase<<<num_blocks, num_threads>>>(
+      num_elements,
+      d_sections,
+      d_prefix_sum
+  );
+}
+
