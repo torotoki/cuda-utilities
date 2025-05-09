@@ -36,6 +36,12 @@ class Stopwatch {
       finished = true;
     }
 
+    double get_elapsed_time_msec() {
+      assert(finished);
+      return chrono::duration<double, std::milli>
+        (intervals.back() - intervals.front()).count();
+    }
+
     void pprint() {
       // Incomplete intervals are not supported yet.
       assert(intervals.size() % 2 == 0);
