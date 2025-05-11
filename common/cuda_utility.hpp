@@ -14,3 +14,4 @@ inline void __checkCudaErrors(cudaError err, const char *file, const int line)
     exit(EXIT_FAILURE);
   }
 }
+
