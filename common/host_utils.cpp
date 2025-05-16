@@ -72,12 +72,12 @@ class InputGenerator {
   
   template <typename T>
   Matrix<T> generateConstantMatrix(
-      size_t num_rows, size_t num_cols
+      size_t num_rows, size_t num_cols, T value = 1.0f
   ) {
     Matrix<T> matrix(num_rows, num_cols);
     for (size_t i = 0; i < num_rows; ++i) {
       for (size_t j = 0; j < num_cols; ++j)
-        matrix.at(i, j) = 1;
+        matrix.at(i, j) = value;
     }
     return matrix;
   }

@@ -1,27 +1,59 @@
+#include <stdexcept>
 #include <vector>
+#include <set>
+#include <string>
 #include <iostream>
 #include <chrono>
 #include <cassert>
+
+#include <cuda_runtime.h>
 
 using namespace std;
 
 class Stopwatch {
   public:
-    Stopwatch() {}
+    Stopwatch(string mode = "chrono") : mode(mode) {
+      set<string> options = {"chrono", "cuda"};
+      assert(options.count(mode));
+      if (mode == "cuda") {
+        cudaEventCreate(&cuda_start);
+        cudaEventCreate(&cuda_stop);
+      }
+    }
+
+    ~Stopwatch() {
+      if (mode == "cuda") {
+        cudaEventDestroy(cuda_start);
+        cudaEventDestroy(cuda_stop);
+      }
+    }
 
     void start() {
       assert(intervals.size() == 0 && !finished);
-      intervals.push_back(chrono::system_clock::now());
+      if (mode == "chrono")
+        intervals.push_back(chrono::system_clock::now());
+      else
+        cudaEventRecord(cuda_start);
     }
 
     void pause() {
-      assert(intervals.size() % 2 == 1 && !finished);
-      intervals.push_back(chrono::system_clock::now());
+      if (mode == "chrono") {
+        assert(intervals.size() % 2 == 1 && !finished);
+        intervals.push_back(chrono::system_clock::now());
+      } else {
+        cudaEventRecord(cuda_stop);
+        cudaEventSynchronize(cuda_stop);
+      }
     }
 
     void resume() {
-      assert(intervals.size() % 2 == 0 && !finished);
-      intervals.push_back(chrono::system_clock::now());
+      if (mode == "chrono") {
+        assert(intervals.size() % 2 == 0 && !finished);
+        intervals.push_back(chrono::system_clock::now());
+      } else
+        throw std::invalid_argument(
+            "CUDA timer does not support resume() yet"
+        );
     }
 
     void lap() {
@@ -38,16 +70,23 @@ class Stopwatch {
 
     double get_elapsed_time_msec() {
       assert(finished);
-      return chrono::duration<double, std::milli>
-        (intervals.back() - intervals.front()).count();
+      if (mode == "chrono")
+        return chrono::duration<double, std::milli>
+          (intervals.back() - intervals.front()).count();
+      else {
+        float msec = 0.0f;
+        cudaEventElapsedTime(&msec, cuda_start, cuda_stop);
+        return (double)msec;
+      }
     }
 
-    void pprint() {
+    void pprint(string tag = "") {
       // Incomplete intervals are not supported yet.
       assert(intervals.size() % 2 == 0);
-      double elapsed_time_msec =
-        chrono::duration<double, std::milli>
-        (intervals.back() - intervals.front()).count();
+      double elapsed_time_msec = get_elapsed_time_msec();
+      if (tag != "") {
+        cout << tag << ": ";
+      }
       cout << "Total Time: " << elapsed_time_msec << " msec" << endl;
       
       if (intervals.size() == 2)
@@ -71,5 +110,7 @@ class Stopwatch {
   private:
     vector<chrono::system_clock::time_point> intervals;
     bool finished = false;
+    string mode;
+    cudaEvent_t cuda_start, cuda_stop;
 };
 
