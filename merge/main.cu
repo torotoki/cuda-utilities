@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <algorithm>
 #include "cuda_utility.hpp"
 #include "timer.cpp"
 #include "host_utils.cpp"
@@ -67,25 +66,30 @@ double benchmarkOnGPU(
   checkCudaErrors(cudaMalloc(&d_values2, values_size));
   checkCudaErrors(cudaMalloc(&d_sorted, 2 * values_size));
 
-  checkCudaErrors(cudaMemcpy(d_values1, h_values1, values_size));
-  checkCudaErrors(cudaMemcpy(d_values2, h_values2, values_size));
+  checkCudaErrors(cudaMemcpy(d_values1, h_values1, values_size, cudaMemcpyDefault));
+  checkCudaErrors(cudaMemcpy(d_values2, h_values2, values_size, cudaMemcpyDefault));
 
   // Computation
   stopwatch_compute.start();
-  const int elements_per_block = 4096;
+  const int elements_per_block = 1024;
   assert(num_total_elements % elements_per_block == 0);
   const int num_blocks = num_total_elements / elements_per_block;
   const int threads_per_block = 512;
   for (uint i = 0; i < num_trials; ++i) {
     merge_kernel_v1<<<num_blocks, threads_per_block>>>(
+        2 * num_elements,
+        num_elements,
         d_values1,
+        num_elements,
         d_values2,
         d_sorted
     );
+    cudaDeviceSynchronize();
+    cout << "GPU computed" << endl;
   }
   stopwatch_compute.stop();
 
-  checkCudaErrors(cudaMemcpy(h_sorted, d_sorted, 2 * values_size));
+  checkCudaErrors(cudaMemcpy(h_sorted, d_sorted, 2 * values_size, cudaMemcpyDefault));
   stopwatch_total.stop();
 
   stopwatch_compute.pprint();
@@ -99,7 +103,8 @@ double benchmarkOnGPU(
 }
 
 int main() {
-  const uint num_total_elements = 2 * (1 << 26);
+  // 1 << 26
+  const uint num_total_elements = 2 * (1 << 15);
   const uint num_elements = num_total_elements / 2;
   const int num_trials = 10;
   InputGenerator input_generator = InputGenerator();
@@ -127,10 +132,16 @@ int main() {
       num_trials
   );
 
-  assert(h_expected_sorted == h_actual_sorted);
-
-  for (int i = 0; i < 30; ++i) {
+  cout << "Check the result validation..." << endl;
+  for (int i = 0; i < 10; ++i) {
+    cout << "i=" << i << ": " << h_actual_sorted[i] << " ";
     cout << "i=" << i << ": " << h_expected_sorted[i] << endl;
   }
   cout << "... " << h_expected_sorted.back() << endl;
+  for (int i = 0; i < h_expected_sorted.size(); ++i) {
+    if (h_actual_sorted[i] != h_expected_sorted[i]) {
+      cout << "i=" << i << ": " << h_actual_sorted[i] << " " << h_expected_sorted[i] << endl;
+    }
+  }
+  assert(h_expected_sorted == h_actual_sorted);
 }
